@@ -1,10 +1,12 @@
 import warnings
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Dict
+
+import torch
 import torchaudio
 import torchaudio.functional as F
 import torchaudio.transforms as T
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from transformers import Wav2Vec2CTCTokenizer
 
 warnings.filterwarnings("ignore")
@@ -59,7 +61,7 @@ class LibriSpeechDataset(Dataset):
     def __len__(self):
         return len(self.librispeech_data)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         ### Grab Path to Audio and Transcript ###
         path_to_audio, transcript = self.librispeech_data[idx]
 
@@ -80,13 +82,61 @@ class LibriSpeechDataset(Dataset):
 
         return {
             "input_values": mel.squeeze(0).transpose(0, 1),
-            "labels": tokenized_transcript,
+            "labels": tokenized_transcript.squeeze(0),
         }
 
 
+def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    """
+    This collate function is basically the heart of our implementation! It includes everything we need for training
+    such as attention masks, sub_attention_masks, span_masks and our sampled negatives!
+    """
+
+    ### Sort Batch from Longest to Shortest (for future packed padding) ###
+    batch = sorted(batch, key=lambda x: x["input_values"].shape[0], reverse=True)
+
+    ### Grab Audios from our Batch Dictionary ###
+    batch_mels = [sample["input_values"] for sample in batch]
+    batch_transcripts = [sample["labels"] for sample in batch]
+
+    ### Get Length of Audios ###
+    seq_lens = torch.tensor([b.shape[0] for b in batch_mels], dtype=torch.long)
+
+    ### Pad and Stack Spectrograms ###
+    spectrograms = torch.nn.utils.rnn.pad_sequence(
+        batch_mels, batch_first=True, padding_value=0
+    )
+
+    ### Convert to Shape Convolution Is Happy With (B x C x H x W) ###
+    spectrograms = spectrograms.unsqueeze(1).transpose(-1, -2)
+
+    ### Get Target Lengths ###
+    target_lengths = torch.tensor(
+        [t.shape[0] for t in batch_transcripts], dtype=torch.long
+    )
+
+    ### Pack Transcripts (CTC Loss Can Take Packed Targets) ###
+    packed_transcripts = torch.cat(batch_transcripts)
+
+    return {
+        "input_values": spectrograms,
+        "seq_lens": seq_lens,
+        "labels": packed_transcripts,
+        "target_lengths": target_lengths,
+    }
+
+
 if __name__ == "__main__":
-    data = LibriSpeechDataset("/home/a/LibriSpeech")
-    print(len(data))
-    d = data[0]
-    print(d)
-    print(d["input_values"].shape)
+    dataset = LibriSpeechDataset("/home/a/LibriSpeech")
+    ### Test Collate Function ###
+    loader = DataLoader(dataset, batch_size=5, collate_fn=collate_fn)
+    batch = next(iter(loader))
+
+    print("Input Values:", batch["input_values"].shape)
+    print("Seq Lens", batch["seq_lens"])
+    print("Labels:", batch["labels"].shape)
+    print("Target Lengths:", batch["target_lengths"])
+
+    ### As required by the CTC loss, sum of the target lengths must equal the length of the flattened labels ###
+    if batch["target_lengths"].sum() == len(batch["labels"]):
+        print("Sucess, Same Length")
