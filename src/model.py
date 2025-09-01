@@ -77,6 +77,52 @@ class MaskedConv2d(nn.Conv2d):
         )
 
 
+class ConvolutionFeatureExtractor(nn.Module):
+    def __init__(self, in_channels=1, out_channels=32):
+        super(ConvolutionFeatureExtractor, self).__init__()
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.conv1 = MaskedConv2d(
+            in_channels,
+            out_channels,
+            kernel_size=(11, 41),
+            stride=(2, 2),
+            padding=(5, 20),
+            bias=False,
+        )
+        self.bn1 = nn.BatchNorm2d(out_channels)
+
+        self.conv2 = MaskedConv2d(
+            out_channels,
+            out_channels,
+            kernel_size=(11, 21),
+            stride=(2, 1),
+            padding=(5, 10),
+            bias=False,
+        )
+        self.bn2 = nn.BatchNorm2d(out_channels)
+
+        self.output_feature_dim = 20
+
+        ### Compute Final Output Features ###
+        self.conv_output_features = self.output_feature_dim * self.out_channels
+
+    def forward(self, x, seq_lens):
+        x, seq_lens = self.conv1(x, seq_lens)
+        x = self.bn1(x)
+        x = torch.nn.functional.hardtanh(x)
+
+        x, seq_lens = self.conv2(x, seq_lens)
+        x = self.bn2(x)
+        x = torch.nn.functional.hardtanh(x)
+
+        x = x.permute(0, 3, 1, 2).flatten(2)
+
+        return x, seq_lens
+
+
 if __name__ == "__main__":
     m = MaskedConv2d(
         1, 32, kernel_size=(11, 41), stride=(2, 2), padding=(5, 20), bias=False
@@ -87,3 +133,4 @@ if __name__ == "__main__":
     co, lo = m(x, lens)
     print(co.shape)
     print(lo)
+    print(co)
