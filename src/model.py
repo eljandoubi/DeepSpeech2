@@ -109,7 +109,7 @@ class ConvolutionFeatureExtractor(nn.Module):
         ### Compute Final Output Features ###
         self.conv_output_features = self.output_feature_dim * self.out_channels
 
-    def forward(self, x, seq_lens):
+    def forward(self, x: torch.FloatTensor, seq_lens: torch.LongTensor):
         x, seq_lens = self.conv1(x, seq_lens)
         x = self.bn1(x)
         x = torch.nn.functional.hardtanh(x)
@@ -139,7 +139,7 @@ class RNNLayer(nn.Module):
 
         self.layernorm = nn.LayerNorm(2 * hidden_size)
 
-    def forward(self, x, seq_lens):
+    def forward(self, x: torch.FloatTensor, seq_lens: torch.LongTensor):
         seq_len = x.shape[1]
 
         ### Pack Sequence (For efficient computation that ignores padding) ###
@@ -159,10 +159,65 @@ class RNNLayer(nn.Module):
         return x
 
 
+class DeepSpeech2(nn.Module):
+    def __init__(
+        self,
+        conv_in_channels=1,
+        conv_out_channels=32,
+        rnn_hidden_size=512,
+        rnn_depth=5,
+        vocab_size=32,
+    ):
+        super(DeepSpeech2, self).__init__()
+
+        self.feature_extractor = ConvolutionFeatureExtractor(
+            conv_in_channels, conv_out_channels
+        )
+
+        self.output_hidden_features = self.feature_extractor.conv_output_features
+
+        self.vocab_size = vocab_size
+
+        ### Stack Together RNN Layers ###
+        ### First Layer has 640 inputs, everything after has 2 * 512 inputs ###
+        self.rnns = nn.ModuleList(
+            [
+                RNNLayer(
+                    input_size=self.output_hidden_features
+                    if i == 0
+                    else 2 * rnn_hidden_size,
+                    hidden_size=rnn_hidden_size,
+                )
+                for i in range(rnn_depth)
+            ]
+        )
+
+        ### Classification Head ###
+        self.head = nn.Sequential(
+            nn.Linear(2 * rnn_hidden_size, rnn_hidden_size),
+            nn.Hardtanh(),
+            nn.Linear(rnn_hidden_size, self.vocab_size),
+        )
+
+    def forward(self, x: torch.FloatTensor, seq_lens: torch.LongTensor):
+        ### Extract Features ###
+        x, final_seq_lens = self.feature_extractor(x, seq_lens)
+
+        ### Pass To RNN Layers ###
+        for rnn in self.rnns:
+            x = rnn(x, final_seq_lens)
+
+        ### Classification Head ###
+        x = self.head(x)
+
+        return x, final_seq_lens
+
+
 if __name__ == "__main__":
-    m = RNNLayer(16)
+    m = DeepSpeech2()
     print(m)
-    x = torch.randn(5, 1234, 16)
+    x = torch.randn(5, 1, 80, 1234)
     lens = torch.tensor([1234, 1230, 1200, 1000, 596])
-    co = m(x, lens)
+    co, lo = m(x, lens)
     print(co.shape)
+    print(lo)
