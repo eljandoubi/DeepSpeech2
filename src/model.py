@@ -48,7 +48,7 @@ class MaskedConv2d(nn.Conv2d):
         seq_range = torch.arange(max_len, device=x.device)  # [max_len]
 
         # Compare each position against lengths
-        mask = seq_range.unsqueeze(0) < output_seq_lens.unsqueeze(1)
+        mask = seq_range.unsqueeze(0) < output_seq_lens.to(x.device).unsqueeze(1)
 
         ### Unsqueeze mask to match image shape ###
         mask = mask.unsqueeze(1).unsqueeze(1)

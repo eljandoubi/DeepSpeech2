@@ -26,6 +26,7 @@ class LibriSpeechDataset(Dataset):
     def __init__(
         self,
         path_to_data_root: str,
+        tokenizer: Wav2Vec2CTCTokenizer,
         include_splits: Union[str, List[str]] = "dev-clean",
         sampling_rate: int = 16000,
         num_audio_channels: int = 1,
@@ -56,7 +57,7 @@ class LibriSpeechDataset(Dataset):
 
         self.amp2db = T.AmplitudeToDB(top_db=80.0)
 
-        self.tokenizer = Wav2Vec2CTCTokenizer.from_pretrained("facebook/wav2vec2-base")
+        self.tokenizer = tokenizer
 
     def __len__(self):
         return len(self.librispeech_data)
@@ -127,7 +128,8 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
 
 
 if __name__ == "__main__":
-    dataset = LibriSpeechDataset("/home/a/LibriSpeech")
+    tokenizer = Wav2Vec2CTCTokenizer.from_pretrained("facebook/wav2vec2-base")
+    dataset = LibriSpeechDataset("/home/a/LibriSpeech", tokenizer)
     ### Test Collate Function ###
     loader = DataLoader(dataset, batch_size=5, collate_fn=collate_fn)
     batch = next(iter(loader))
