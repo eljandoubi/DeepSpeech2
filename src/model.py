@@ -123,14 +123,46 @@ class ConvolutionFeatureExtractor(nn.Module):
         return x, seq_lens
 
 
+class RNNLayer(nn.Module):
+    def __init__(self, input_size, hidden_size=512):
+        super(RNNLayer, self).__init__()
+
+        self.hidden_dim = hidden_size
+        self.input_size = input_size
+
+        self.rnn = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            batch_first=True,
+            bidirectional=True,
+        )
+
+        self.layernorm = nn.LayerNorm(2 * hidden_size)
+
+    def forward(self, x, seq_lens):
+        seq_len = x.shape[1]
+
+        ### Pack Sequence (For efficient computation that ignores padding) ###
+        packed_x = nn.utils.rnn.pack_padded_sequence(x, seq_lens, batch_first=True)
+
+        ### Pass Packed Sequence through RNN ###
+        out, ot = self.rnn(packed_x)
+
+        ### Unpack (and repad) sequence ###
+        x, y = nn.utils.rnn.pad_packed_sequence(
+            out, total_length=seq_len, batch_first=True
+        )
+
+        ### Normalize ###
+        x = self.layernorm(x)
+
+        return x
+
+
 if __name__ == "__main__":
-    m = MaskedConv2d(
-        1, 32, kernel_size=(11, 41), stride=(2, 2), padding=(5, 20), bias=False
-    )
+    m = RNNLayer(16)
     print(m)
-    x = torch.randn(5, 1, 80, 1234)
+    x = torch.randn(5, 1234, 16)
     lens = torch.tensor([1234, 1230, 1200, 1000, 596])
-    co, lo = m(x, lens)
+    co = m(x, lens)
     print(co.shape)
-    print(lo)
-    print(co)
