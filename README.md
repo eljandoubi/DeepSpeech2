@@ -1,7 +1,7 @@
 # DeepSpeech2
 Building the DeepSpeech2
 
-* Clone the repository and Go to PaliGemma directory.
+* Clone the repository and Go to DeepSpeech2 directory.
 ```bash
 git clone https://github.com/eljandoubi/DeepSpeech2.git && cd DeepSpeech2
 ```
