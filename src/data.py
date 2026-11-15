@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Union, Dict
 
 import torch
-import torchaudio
+import soundfile as sf
 import torchaudio.functional as F
 import torchaudio.transforms as T
 from torch.utils.data import Dataset, DataLoader
@@ -67,7 +67,8 @@ class LibriSpeechDataset(Dataset):
         path_to_audio, transcript = self.librispeech_data[idx]
 
         ### Load Audio ###
-        audio, orig_sr = torchaudio.load(path_to_audio)
+        audio, orig_sr = sf.read(path_to_audio, dtype="float32", always_2d=True)
+        audio = torch.from_numpy(audio.T.copy())
 
         if orig_sr != self.sampling_rate:
             audio = F.resample(audio, orig_freq=orig_sr, new_freq=self.sampling_rate)

@@ -1,6 +1,6 @@
-torch==2.8.0
-torchaudio==2.8.0
-transformers==4.56.0
+torch==2.15.0
+torchaudio==2.11.1
+transformers==5.23.0
 tqdm==4.67.1
 matplotlib==3.10.6
 jiwer==4.0.0
